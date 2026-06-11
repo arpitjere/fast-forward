@@ -5,7 +5,7 @@ payment-service
 dev
 
 ## Deployment_Required
-yes
+no
 
 ## Version
 1.0.0
