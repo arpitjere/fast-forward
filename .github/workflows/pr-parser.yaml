@@ -1,0 +1,80 @@
+name: Dynamic PR Workflow
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+
+jobs:
+
+  parse-pr:
+    runs-on: ubuntu-latest
+
+    outputs:
+      app_name: ${{ steps.extract.outputs.app_name }}
+      environment: ${{ steps.extract.outputs.environment }}
+      deploy_required: ${{ steps.extract.outputs.deploy_required }}
+      version: ${{ steps.extract.outputs.version }}
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Print PR Body
+        run: |
+          echo "PR BODY:"
+          echo "${{ github.event.pull_request.body }}"
+
+      - name: Extract PR Values
+        id: extract
+        shell: bash
+        run: |
+
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          APP_NAME=$(echo "$PR_BODY" | awk '/## App_Name/{getline; print}' | xargs)
+          ENVIRONMENT=$(echo "$PR_BODY" | awk '/## Environment/{getline; print}' | xargs)
+          DEPLOY_REQUIRED=$(echo "$PR_BODY" | awk '/## Deployment_Required/{getline; print}' | xargs)
+          VERSION=$(echo "$PR_BODY" | awk '/## Version/{getline; print}' | xargs)
+
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "deploy_required=$DEPLOY_REQUIRED" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Show Extracted Values
+        run: |
+          echo "App Name: ${{ steps.extract.outputs.app_name }}"
+          echo "Environment: ${{ steps.extract.outputs.environment }}"
+          echo "Deploy Required: ${{ steps.extract.outputs.deploy_required }}"
+          echo "Version: ${{ steps.extract.outputs.version }}"
+
+  build:
+    needs: parse-pr
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Build Application
+        run: |
+          echo "Building ${{ needs.parse-pr.outputs.app_name }}"
+          echo "Version ${{ needs.parse-pr.outputs.version }}"
+
+  deploy:
+    needs:
+      - parse-pr
+      - build
+
+    if: needs.parse-pr.outputs.deploy_required == 'yes'
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Deploy Application
+        run: |
+          echo "Deploying ${{ needs.parse-pr.outputs.app_name }}"
+          echo "Environment: ${{ needs.parse-pr.outputs.environment }}"
