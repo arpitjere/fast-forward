@@ -1,0 +1,115 @@
+name: Dynamic PR Workflow
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+
+jobs:
+
+  parse-pr:
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      app_name: ${{ steps.extract.outputs.app_name }}
+      environment: ${{ steps.extract.outputs.environment }}
+      deploy_required: ${{ steps.extract.outputs.deploy_required }}
+      version: ${{ steps.extract.outputs.version }}
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Print Full PR Body
+        run: |
+          echo "========== PR BODY =========="
+          echo "${{ github.event.pull_request.body }}"
+          echo "============================="
+
+      - name: Extract PR Values
+        id: extract
+        shell: bash
+        run: |
+
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          APP_NAME=$(echo "$PR_BODY" | grep -A1 "## App_Name" | tail -1 | xargs)
+
+          ENVIRONMENT=$(echo "$PR_BODY" | grep -A1 "## Environment" | tail -1 | xargs)
+
+          DEPLOY_REQUIRED=$(echo "$PR_BODY" | grep -A1 "## Deployment_Required" | tail -1 | tr -d '\r' | xargs | tr '[:upper:]' '[:lower:]')
+
+          VERSION=$(echo "$PR_BODY" | grep -A1 "## Version" | tail -1 | xargs)
+
+          echo "============================="
+          echo "Extracted Values"
+          echo "APP_NAME=$APP_NAME"
+          echo "ENVIRONMENT=$ENVIRONMENT"
+          echo "DEPLOY_REQUIRED=[$DEPLOY_REQUIRED]"
+          echo "VERSION=$VERSION"
+          echo "============================="
+
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "deploy_required=$DEPLOY_REQUIRED" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Validate Required Fields
+        run: |
+
+          if [ -z "${{ steps.extract.outputs.app_name }}" ]; then
+            echo "ERROR: App_Name missing"
+            exit 1
+          fi
+
+          if [ -z "${{ steps.extract.outputs.environment }}" ]; then
+            echo "ERROR: Environment missing"
+            exit 1
+          fi
+
+  build:
+
+    needs: parse-pr
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Build Application
+        run: |
+
+          echo "============================="
+          echo "BUILD STAGE"
+          echo "Building App: ${{ needs.parse-pr.outputs.app_name }}"
+          echo "Version: ${{ needs.parse-pr.outputs.version }}"
+          echo "Environment: ${{ needs.parse-pr.outputs.environment }}"
+          echo "============================="
+
+  deploy:
+
+    needs:
+      - parse-pr
+      - build
+
+    if: ${{ needs.parse-pr.outputs.deploy_required == 'yes' }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Debug Deploy Condition
+        run: |
+          echo "Deploy Required Value = [${{ needs.parse-pr.outputs.deploy_required }}]"
+
+      - name: Deploy Application
+        run: |
+
+          echo "============================="
+          echo "DEPLOY STAGE"
+          echo "Deploying App: ${{ needs.parse-pr.outputs.app_name }}"
+          echo "Environment: ${{ needs.parse-pr.outputs.environment }}"
+          echo "============================="
